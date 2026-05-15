@@ -124,6 +124,7 @@ function _seedOrders() {
         country_code: "US",
       },
       payment_status:      status === "refunded" ? "refunded" : "captured",
+      refunded_total:      status === "refunded" ? total : 0,
       fulfillment_status:
         status === "delivered" ? "delivered"
         : status === "shipped" ? "shipped"
@@ -249,6 +250,7 @@ export const OrderService = {
       discount_amount:     cart.discount_amount,
       discount_code:       cart.discount_code,
       total:               cart.total,
+      refunded_total:      0,
       shipping_address:    cart.shipping_address!,
       billing_address:     cart.billing_address ?? cart.shipping_address!,
       payment_status:      "awaiting",
@@ -407,17 +409,20 @@ export const OrderService = {
 
     const order = OrderService.getById(order_id);
 
-    if (!["delivered", "shipped"].includes(order.status)) {
+    if (!["delivered", "shipped", "refunded"].includes(order.status)) {
       throw new ServiceError(
         "INVALID_TRANSITION",
         `Refunds are only allowed on shipped or delivered orders`,
       );
     }
 
-    if (validatedAmount > order.total) {
+    const alreadyRefunded = order.refunded_total || 0;
+    const remaining = order.total - alreadyRefunded;
+
+    if (validatedAmount > remaining) {
       throw new ServiceError(
         "INVALID_AMOUNT",
-        `Refund amount ${formatMoney(validatedAmount)} exceeds order total ${formatMoney(order.total)}`,
+        `Refund amount ${formatMoney(validatedAmount)} exceeds remaining balance ${formatMoney(remaining)}`,
       );
     }
 
@@ -425,11 +430,13 @@ export const OrderService = {
 
     await eventBus.emit(EVENT.ORDER_REFUND_REQUESTED, { order_id, amount: validatedAmount });
 
-    const isFullRefund = validatedAmount === order.total;
+    const newRefundedTotal = alreadyRefunded + validatedAmount;
+    const isFullRefund = newRefundedTotal === order.total;
 
     const updated = _update(order_id, {
       status:         isFullRefund ? "refunded" : order.status,
       payment_status: isFullRefund ? "refunded" : "partially_refunded",
+      refunded_total: newRefundedTotal,
     });
 
     await eventBus.emit(EVENT.ORDER_REFUNDED, { order_id, amount: validatedAmount });
@@ -451,8 +458,8 @@ export const OrderService = {
   } {
     const all = [...orders.values()];
     const revenue = all
-      .filter((o) => !["cancelled", "refunded"].includes(o.status))
-      .reduce((sum, o) => sum + o.total, 0);
+      .filter((o) => !["cancelled"].includes(o.status))
+      .reduce((sum, o) => sum + (o.total - (o.refunded_total || 0)), 0);
 
     return {
       total:      all.length,

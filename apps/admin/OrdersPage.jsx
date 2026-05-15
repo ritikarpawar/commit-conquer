@@ -391,14 +391,15 @@ function OrderDrawer({ order, onClose }) {
     },
   });
   const refundMutation = useMutation({
-    mutationFn: () =>
-      apiRefund({ id: order.id, amount: parseFloat(refundAmount) }),
+    mutationFn: (amount) =>
+      apiRefund({ id: order.id, amount: Math.min(amount, order.total) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       onClose();
     },
   });
 
+  const remaining = order.total - (order.refunded_total || 0);
   
   const handleRefundChange = (e) => {
     const raw = e.target.value;
@@ -408,16 +409,20 @@ function OrderDrawer({ order, onClose }) {
     }
     const num = parseFloat(raw);
     if (isNaN(num) || num < 0) return;
-    
-    setRefundAmount(String(Math.min(num, order.total)));
+
+    if (num > remaining) {
+      setRefundAmount(String(remaining));
+    } else {
+      setRefundAmount(raw);
+    }
   };
 
   const parsedRefund = parseFloat(refundAmount) || 0;
-  const refundValid = parsedRefund > 0 && parsedRefund <= order.total;
+  const refundValid = parsedRefund > 0 && parsedRefund <= remaining;
 
   const canFulfill = ["pending", "processing"].includes(order.status);
   const canCancel = ["pending", "processing"].includes(order.status);
-  const canRefund = ["delivered", "shipped"].includes(order.status);
+  const canRefund = ["delivered", "shipped", "refunded"].includes(order.status) && remaining > 0;
   const isBusy =
     fulfillMutation.isPending ||
     cancelMutation.isPending ||
@@ -427,7 +432,7 @@ function OrderDrawer({ order, onClose }) {
     if (!confirm) return;
     if (confirm.type === "fulfill") fulfillMutation.mutate();
     else if (confirm.type === "cancel") cancelMutation.mutate();
-    else if (confirm.type === "refund") refundMutation.mutate();
+    else if (confirm.type === "refund") refundMutation.mutate(confirm.amount);
     setConfirm(null);
   };
 
@@ -610,18 +615,20 @@ function OrderDrawer({ order, onClose }) {
                     className="refund-input"
                     type="number"
                     min="0"
-                    max={order.total} // ✅ HTML attribute cap
+                    max={remaining} // ✅ HTML attribute cap
                     step="0.01"
                     placeholder={`0.00`}
                     value={refundAmount}
-                    onChange={handleRefundChange} // ✅ JS logic cap
+                    onChange={handleRefundChange}
+                    disabled={isBusy || !!confirm}
                   />
                   <button
                     className="btn btn-amber btn-sm"
-                    disabled={!refundValid || isBusy}
+                    disabled={!refundValid || isBusy || !!confirm}
                     onClick={() =>
                       setConfirm({
                         type: "refund",
+                        amount: parsedRefund,
                         label: "Issue Refund",
                         btnClass: "btn-amber",
                         desc: (
@@ -639,8 +646,8 @@ function OrderDrawer({ order, onClose }) {
                 </div>
                 {/* Hint shows max allowed */}
                 <div className="refund-hint">
-                  Max refund: <em>${order.total.toFixed(2)}</em>
-                  {parsedRefund > 0 && parsedRefund <= order.total && (
+                  Remaining balance: <em>${remaining.toFixed(2)}</em>
+                  {parsedRefund > 0 && parsedRefund <= remaining && (
                     <span style={{ marginLeft: 12, color: "var(--amber)" }}>
                       Refunding ${parsedRefund.toFixed(2)}
                     </span>
@@ -886,7 +893,7 @@ export default function OrdersPage() {
         
         {selectedOrder && (
           <OrderDrawer
-            order={selectedOrder}
+            order={orders.find(o => o.id === selectedOrder.id) || selectedOrder}
             onClose={() => setSelectedOrder(null)}
           />
         )}

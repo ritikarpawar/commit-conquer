@@ -87,6 +87,7 @@ export interface Order {
   discount_amount: number;
   discount_code?: string;
   total: number;
+  refunded_total?: number;
   shipping_address: Address;
   billing_address: Address;
   payment_status: "awaiting" | "captured" | "refunded" | "partially_refunded";
