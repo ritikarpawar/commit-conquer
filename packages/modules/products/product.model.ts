@@ -1,6 +1,6 @@
-
 import { type Product, type ProductVariant } from "../../core/types";
 import { generateId, toHandle } from "../../core/utils";
+import { Index } from "flexsearch";
 
 
 
@@ -213,6 +213,22 @@ const byId   = new Map<string, Product>(SEED_PRODUCTS.map((p) => [p.id, p]));
 const byHandle = new Map<string, Product>(SEED_PRODUCTS.map((p) => [p.handle, p]));
 
 
+/**
+ * Search Index Configuration
+ */
+const searchIndex = new Index({
+  tokenize: "forward",
+  preset: "performance",
+  cache: true,
+});
+
+const getSearchContent = (p: Product) => 
+  `${p.title} ${p.description ?? ""} ${p.category ?? ""} ${p.tags.join(" ")}`;
+
+// Initial Indexing
+SEED_PRODUCTS.forEach((p) => searchIndex.add(p.id, getSearchContent(p)));
+
+
 
 export const ProductModel = {
 
@@ -246,6 +262,18 @@ export const ProductModel = {
     );
   },
 
+  /**
+   * Optimized Full-Text Search
+   */
+  fullTextSearch(query: string): Product[] {
+    if (!query?.trim()) return this.findAll();
+    
+    const ids = searchIndex.search(query);
+    return ids
+      .map((id) => byId.get(id as string))
+      .filter(Boolean) as Product[];
+  },
+
   create(data: Omit<Product, "id" | "handle" | "created_at" | "updated_at">): Product {
     const product: Product = {
       ...data,
@@ -256,6 +284,7 @@ export const ProductModel = {
     };
     byId.set(product.id, product);
     byHandle.set(product.handle, product);
+    searchIndex.add(product.id, getSearchContent(product));
     return product;
   },
 
@@ -283,6 +312,7 @@ export const ProductModel = {
     }
 
     byId.set(id, updated);
+    searchIndex.update(id, getSearchContent(updated));
     return updated;
   },
 
@@ -291,6 +321,7 @@ export const ProductModel = {
     if (!product) return false;
     byHandle.delete(product.handle);
     byId.delete(id);
+    searchIndex.remove(id);
     return true;
   },
 

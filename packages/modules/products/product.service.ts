@@ -61,14 +61,7 @@ export const ProductService = {
     }
 
     if (search && search.trim()) {
-      const q = search.trim().toLowerCase();
-      products = products.filter(
-        (p) =>
-          p.title.toLowerCase().includes(q) ||
-          p.description?.toLowerCase().includes(q) ||
-          p.tags.some((t) => t.toLowerCase().includes(q)) ||
-          p.category?.toLowerCase().includes(q),
-      );
+      products = ProductModel.fullTextSearch(search);
     }
 
     products = _sort(products, sort);
