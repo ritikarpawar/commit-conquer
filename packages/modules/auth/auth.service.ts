@@ -1,5 +1,5 @@
 import { type Customer, type AuthSession } from "../../core/types";
-import { generateId, isValidEmail, sleep } from "../../core/utils";
+import { generateId, isValidEmail, sleep, sanitizeString } from "../../core/utils";
 import { eventBus, EVENT } from "../../core/event-bus";
 import { ServiceError } from "../products/product.service";
 
@@ -342,8 +342,8 @@ export const AuthService = {
       const customer: Customer = {
         id: generateId("cust"),
         email: emailKey,
-        first_name: payload.given_name || payload.name || "Google",
-        last_name: payload.family_name || "User",
+        first_name: sanitizeString(payload.given_name || payload.name || "Google", 50),
+        last_name: sanitizeString(payload.family_name || "User", 50),
         has_account: true,
         created_at: new Date().toISOString(),
       };
@@ -433,11 +433,38 @@ function _decodeGoogleToken(token: string): Record<string, any> {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) {
-      throw new Error("Invalid JWT");
+      throw new Error("Invalid JWT structure");
     }
     const decoded = Buffer.from(parts[1], "base64url").toString("utf8");
-    return JSON.parse(decoded);
-  } catch {
-    throw new ServiceError("VALIDATION_ERROR", "Invalid Google token");
+    const payload = JSON.parse(decoded);
+
+    // 1. Basic claim verification
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof payload.exp === "number" && payload.exp < now) {
+      throw new Error("Token has expired");
+    }
+
+    const validIssuers = ["accounts.google.com", "https://accounts.google.com"];
+    if (!payload.iss || !validIssuers.includes(payload.iss)) {
+      throw new Error("Invalid issuer");
+    }
+
+    // 2. Audience verification (if client ID is configured)
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (clientId && payload.aud !== clientId) {
+      throw new Error("Invalid audience");
+    }
+
+    // 3. Security verification
+    if (payload.email_verified === false) {
+      throw new Error("Google email is not verified");
+    }
+
+    return payload;
+  } catch (err: any) {
+    throw new ServiceError(
+      "VALIDATION_ERROR",
+      `Google authentication failed: ${err.message}`,
+    );
   }
 }

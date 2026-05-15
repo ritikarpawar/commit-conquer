@@ -113,6 +113,21 @@ export function generateId(prefix: string): string {
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
+/**
+ * Validates that a value is a safe integer and optionally meets a minimum.
+ * Returns the parsed integer or throws if invalid.
+ */
+export function validateInt(value: unknown, name: string, min = 0): number {
+  const num = Number(value);
+  if (!Number.isSafeInteger(num)) {
+    throw new Error(`${name} must be a valid integer`);
+  }
+  if (num < min) {
+    throw new Error(`${name} must be at least ${min}`);
+  }
+  return num;
+}
+
 export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -254,4 +269,12 @@ export function stockLabel(quantity: number): string {
   if (quantity <= 0) return "Out of stock";
   if (quantity <= 5) return `Only ${quantity} left`;
   return "In stock";
+}
+
+/**
+ * Sanitize a string: ensure it's a string, trim, and limit length
+ */
+export function sanitizeString(val: any, maxLength = 255): string {
+  if (typeof val !== "string") return "";
+  return val.trim().slice(0, maxLength);
 }

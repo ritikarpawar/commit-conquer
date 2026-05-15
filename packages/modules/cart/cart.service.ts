@@ -10,6 +10,7 @@ import {
   calcDiscount,
   calcTax,
   sleep,
+  validateInt,
 } from "../../core/utils";
 import { eventBus, EVENT } from "../../core/event-bus";
 import { ProductModel } from "../products/product.model";
@@ -79,7 +80,15 @@ export const CartService = {
   ): Promise<Cart> {
     const cart = CartService.get(cartId);
 
-    
+    // 1. Validate quantity
+    let validatedQty = 1;
+    try {
+      validatedQty = validateInt(quantity, "Quantity", 1);
+    } catch (e: any) {
+      throw new ServiceError("VALIDATION_ERROR", e.message);
+    }
+
+    // 2. Stock check
     const product = ProductModel.findById(productId);
     if (!product) {
       throw new ServiceError("PRODUCT_NOT_FOUND", `Product ${productId} not found`);
@@ -90,10 +99,9 @@ export const CartService = {
       throw new ServiceError("VARIANT_NOT_FOUND", `Variant ${variantId} not found`);
     }
 
-    
     const existingLine = cart.items.find((i) => i.variant_id === variantId);
     const currentQtyInCart = existingLine?.quantity ?? 0;
-    const requested = currentQtyInCart + quantity;
+    const requested = currentQtyInCart + validatedQty;
 
     if (variant.inventory_quantity < requested) {
       throw new ServiceError(
@@ -102,9 +110,9 @@ export const CartService = {
       );
     }
 
-    
+    // 3. Update or Add
     if (existingLine) {
-      existingLine.quantity += quantity;
+      existingLine.quantity += validatedQty;
     } else {
       const line: CartItem = {
         id:            generateId("cli"),
@@ -114,7 +122,7 @@ export const CartService = {
         variant_title: variant.title,
         thumbnail:     product.thumbnail,
         price:         variant.price,
-        quantity,
+        quantity:      validatedQty,
       };
       cart.items.push(line);
     }
@@ -154,13 +162,16 @@ export const CartService = {
     lineItemId: string,
     quantity: number,
   ): Promise<Cart> {
-    if (quantity < 0) {
-      throw new ServiceError("INVALID_QUANTITY", "Quantity cannot be negative");
+    let validatedQty = 0;
+    try {
+      validatedQty = validateInt(quantity, "Quantity", 0);
+    } catch (e: any) {
+      throw new ServiceError("VALIDATION_ERROR", e.message);
     }
 
     const cart = CartService.get(cartId);
 
-    if (quantity === 0) {
+    if (validatedQty === 0) {
       return CartService.removeItem(cartId, lineItemId);
     }
 
@@ -171,14 +182,14 @@ export const CartService = {
 
     // Stock check
     const variant = ProductModel.findVariant(line.product_id, line.variant_id);
-    if (variant && variant.inventory_quantity < quantity) {
+    if (variant && variant.inventory_quantity < validatedQty) {
       throw new ServiceError(
         "INSUFFICIENT_STOCK",
         `Only ${variant.inventory_quantity} units available`,
       );
     }
 
-    line.quantity = quantity;
+    line.quantity = validatedQty;
 
     const updated = _recalc(cart);
     carts.set(cartId, updated);
@@ -322,11 +333,10 @@ export const CartService = {
 
 function _recalc(cart: Cart): Cart {
   
-  const subtotal = cart.items.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0,
-  );
-
+  const subtotal = cart.items.reduce((sum, item) => {
+    const price = Number.isFinite(item.price) ? item.price : 0;
+    return sum + (price * item.quantity);
+  }, 0);
   
   let discountAmount = 0;
   if (cart.discount_code) {
