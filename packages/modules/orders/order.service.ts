@@ -6,7 +6,7 @@ import {
   type OrderItem,
   type PaginatedResponse,
 } from "../../core/types";
-import { generateId, paginate, formatMoney, sleep } from "../../core/utils";
+import { generateId, paginate, formatMoney, sleep, validateInt } from "../../core/utils";
 import { eventBus, EVENT } from "../../core/event-bus";
 import { ServiceError } from "../products/product.service";
 import { ProductService } from "../products/product.service";
@@ -382,7 +382,15 @@ export const OrderService = {
   
 
   async refund(input: RefundInput): Promise<Order> {
-    const { order_id, amount, reason = "customer_request" } = input;
+    const { order_id, reason = "customer_request" } = input;
+    
+    let validatedAmount = 0;
+    try {
+      validatedAmount = validateInt(input.amount, "Refund amount", 1);
+    } catch (e: any) {
+      throw new ServiceError("VALIDATION_ERROR", e.message);
+    }
+
     const order = OrderService.getById(order_id);
 
     if (!["delivered", "shipped"].includes(order.status)) {
@@ -392,29 +400,25 @@ export const OrderService = {
       );
     }
 
-    if (amount <= 0) {
-      throw new ServiceError("INVALID_AMOUNT", "Refund amount must be greater than zero");
-    }
-
-    if (amount > order.total) {
+    if (validatedAmount > order.total) {
       throw new ServiceError(
         "INVALID_AMOUNT",
-        `Refund amount ${formatMoney(amount)} exceeds order total ${formatMoney(order.total)}`,
+        `Refund amount ${formatMoney(validatedAmount)} exceeds order total ${formatMoney(order.total)}`,
       );
     }
 
-    await sleep(400);
+    await sleep(400); // simulate payment gateway call
 
-    await eventBus.emit(EVENT.ORDER_REFUND_REQUESTED, { order_id, amount });
+    await eventBus.emit(EVENT.ORDER_REFUND_REQUESTED, { order_id, amount: validatedAmount });
 
-    const isFullRefund = amount === order.total;
+    const isFullRefund = validatedAmount === order.total;
 
     const updated = _update(order_id, {
       status:         isFullRefund ? "refunded" : order.status,
       payment_status: isFullRefund ? "refunded" : "partially_refunded",
     });
 
-    await eventBus.emit(EVENT.ORDER_REFUNDED, { order_id, amount });
+    await eventBus.emit(EVENT.ORDER_REFUNDED, { order_id, amount: validatedAmount });
 
     return updated;
   },
