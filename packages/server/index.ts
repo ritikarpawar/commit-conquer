@@ -9,25 +9,12 @@ import express, {
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import path from "path";
-import dotenv from "dotenv";
-dotenv.config({ path: path.join(__dirname, ".env") });
+import "dotenv/config";
+import { enforceEnv } from "./src/validateEnv";
 
-
-// ─── Env Validation ───────────────────────────────────────────────────────────
-const REQUIRED_ENV_VARS = ["STRIPE_KEY", "DB_URL"];
-const missingVars = REQUIRED_ENV_VARS.filter(v => !process.env[v]);
-
-if (missingVars.length > 0) {
-  console.error(`
-  ❌ ERROR: Missing required environment variables:
-     ${missingVars.join(", ")}
-
-     The server cannot start without these. Please check your .env file.
-  `);
-  process.exit(1);
-}
-
+// ─── Validate environment variables before anything else ──────────────────────
+// Fails fast with a clear error if required vars are missing or malformed.
+enforceEnv();
 
 
 import { ProductService, ServiceError } from "../modules/products/product.service.ts";
@@ -126,6 +113,7 @@ const STATUS_MAP: Record<string, number> = {
   VARIANT_NOT_FOUND:    404,
   CART_NOT_FOUND:       404,
   ORDER_NOT_FOUND:      404,
+  TOO_MANY_REQUESTS:    429,
   CUSTOMER_NOT_FOUND:   404,
   ITEM_NOT_FOUND:       404,
   INVALID_CREDENTIALS:  401,
@@ -157,7 +145,7 @@ app.get("/health", (_req, res) => {
 });
 
 const store = express.Router();
-app.use("/api/store", store);
+app.use("/api/v1/store", store);
 
 
 
@@ -403,7 +391,7 @@ store.get("/inventory/:variantId", (req, res) => {
 
 const admin = express.Router();
 admin.use(adminOnly);
-app.use("/api/admin", admin);
+app.use("/api/v1/admin", admin);
 
 
 
