@@ -1,5 +1,5 @@
 import { type Product, type PaginatedResponse } from "../../core/types";
-import { paginate, stripEmpty } from "../../core/utils";
+import { paginate, stripEmpty, validateInt } from "../../core/utils";
 import { eventBus, EVENT } from "../../core/event-bus";
 import { ProductModel } from "./product.model";
 
@@ -100,18 +100,18 @@ export const ProductService = {
     const product = ProductModel.create({
       title: input.title,
       description: input.description ?? "",
-      thumbnail: input.thumbnail ?? "",
-      images: input.images ?? [],
-      status: input.status ?? "draft",
-      category: input.category ?? "",
-      tags: input.tags ?? [],
-      variants: input.variants.map((v) => ({
-        id: `var_${Math.random().toString(36).slice(2, 9)}`,
-        title: v.title,
-        sku: v.sku,
-        price: v.price,
-        inventory_quantity: v.inventory_quantity,
-        options: v.options,
+      thumbnail:   input.thumbnail ?? "",
+      images:      input.images ?? [],
+      status:      input.status ?? "draft",
+      category:    input.category ?? "",
+      tags:        input.tags ?? [],
+      variants:    input.variants.map((v) => ({
+        id:                 `var_${Math.random().toString(36).slice(2, 9)}`,
+        title:              v.title,
+        sku:                v.sku,
+        price:              validateInt(v.price, "Variant price"),
+        inventory_quantity: validateInt(v.inventory_quantity, "Inventory quantity"),
+        options:            v.options,
       })),
     });
 
@@ -293,11 +293,11 @@ function _validateCreate(input: CreateProductInput): void {
     if (!v.sku?.trim()) {
       throw new ServiceError("VALIDATION_ERROR", `Variant SKU is required`);
     }
-    if (typeof v.price !== "number" || v.price < 0) {
-      throw new ServiceError(
-        "VALIDATION_ERROR",
-        `Variant price must be a non-negative number`,
-      );
+    try {
+      validateInt(v.price, "Variant price");
+      validateInt(v.inventory_quantity, "Inventory quantity");
+    } catch (e: any) {
+      throw new ServiceError("VALIDATION_ERROR", e.message);
     }
   }
 }
