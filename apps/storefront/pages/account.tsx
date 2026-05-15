@@ -119,7 +119,9 @@ export default function AccountPage() {
         <div style={s.card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32 }}>
             <div>
-              <h1 style={s.title}>Hey, {customer.first_name || customer.email} 👋</h1>
+              <h1 style={s.title}>
+                Hey, {String(customer.first_name || customer.email || "User")} 👋
+              </h1>
               <p style={{ color: "#888", marginTop: 4 }}>{customer.email}</p>
             </div>
             <button onClick={logout} style={s.logoutBtn}>Log out</button>

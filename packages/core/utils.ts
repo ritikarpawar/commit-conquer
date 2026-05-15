@@ -270,3 +270,11 @@ export function stockLabel(quantity: number): string {
   if (quantity <= 5) return `Only ${quantity} left`;
   return "In stock";
 }
+
+/**
+ * Sanitize a string: ensure it's a string, trim, and limit length
+ */
+export function sanitizeString(val: any, maxLength = 255): string {
+  if (typeof val !== "string") return "";
+  return val.trim().slice(0, maxLength);
+}
